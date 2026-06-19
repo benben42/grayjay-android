@@ -17,7 +17,7 @@ name: Build & Release APK
 #   KEYSTORE_BASE64    base64 of your release .keystore/.jks  (base64 -w0 my.keystore)
 #   KEYSTORE_PASSWORD  store password
 #   KEY_ALIAS          key alias
-#   KEY_PASSWORD       key password
+#   KEY_PASSWORD       key password (optional — omit if same as KEYSTORE_PASSWORD)
 #
 # Keeping up to date with upstream (run locally, then trigger this workflow):
 #   git remote add upstream https://gitlab.futo.org/videostreaming/grayjay.git   # once
@@ -108,13 +108,17 @@ jobs:
             exit 1
           fi
           echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+          # If KEY_PASSWORD secret was left empty (GitHub rejects blank secrets),
+          # fall back to KEYSTORE_PASSWORD — the default when no separate key
+          # password was set during keystore creation.
+          resolved_key_password="${KEY_PASSWORD:-$KEYSTORE_PASSWORD}"
           # app/build.gradle reads signing config from /opt/key.properties
           sudo mkdir -p /opt
           sudo tee /opt/key.properties > /dev/null <<EOF
           storeFile=$RUNNER_TEMP/release.keystore
           storePassword=$KEYSTORE_PASSWORD
           keyAlias=$KEY_ALIAS
-          keyPassword=$KEY_PASSWORD
+          keyPassword=$resolved_key_password
           EOF
 
       - name: Compute capitalized names
