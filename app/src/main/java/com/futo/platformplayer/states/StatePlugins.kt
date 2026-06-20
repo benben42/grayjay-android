@@ -252,8 +252,15 @@ class StatePlugins {
             val embeddedConfig = getEmbeddedPluginConfig(context, embedded.value);
             if(embeddedConfig != null) {
                 val existing = getPlugin(embedded.key);
-                if(existing == null || (existing.config.version < embeddedConfig.version || (force || FORCE_REINSTALL_EMBEDDED))) {
-                    if (existing != null)
+                //An embedded plugin can survive in the store as a descriptor while its script file is
+                //lost (e.g. an Android Auto Backup restore brings back the small descriptor but not the
+                //large script). Such a plugin fails to load and is absent from the sources list, yet its
+                //version matches so it is never refreshed. Detect the missing/empty script and reinstall.
+                val existingScriptMissing = existing != null && getScript(embedded.key).isNullOrEmpty();
+                if(existing == null || existingScriptMissing || (existing.config.version < embeddedConfig.version || (force || FORCE_REINSTALL_EMBEDDED))) {
+                    if (existingScriptMissing)
+                        Logger.i(TAG, "Embedded plugin [${existing!!.config.id}] ${existing.config.name} has a missing/corrupt script, reinstalling");
+                    else if (existing != null)
                         Logger.i(TAG, "Outdated Embedded plugin [${existing.config.id}] ${existing.config.name} (${existing.config.version} < ${embeddedConfig.version}), reinstalling");
                     else
                         Logger.i(TAG, "Embedded plugin nog installed [${embeddedConfig.id}] ${embeddedConfig.name} (${embeddedConfig.version}), installing");
@@ -464,10 +471,15 @@ class StatePlugins {
         }
         fun verifyCanInstall() {
             val installed = StatePlatform.instance.getClientOrNull(config.id);
-            if(installed != null)
+            //Also consider the persistent plugin store, not just the loaded clients: a plugin can exist
+            //in the store but fail to load (e.g. its script was lost to an Android Auto Backup restore),
+            //leaving it absent from the available clients while still blocking a fresh install with
+            //"already exists". Offering a reinstall here lets the user recover without clearing app data.
+            val installedName = installed?.name ?: getPlugin(config.id)?.config?.name;
+            if(installedName != null)
                 UIDialogs.showDialog(context, R.drawable.ic_security_pred,
                     "A plugin with this id already exists named:\n" +
-                            "${installed.name}\n[${config.id}]\n\n" +
+                            "${installedName}\n[${config.id}]\n\n" +
                             "Would you like to reinstall it?", null, null,
                     1,
                     UIDialogs.Action("Reinstall", { doInstall(true) }, UIDialogs.ActionStyle.DANGEROUS_TEXT),
